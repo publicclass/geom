@@ -1,6 +1,6 @@
 {
   "name": "geom",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A collection of terse, efficient geometry tools.",
   "main": "index.js",
   "scripts": {
@@ -14,9 +14,14 @@
     "geometry"
   ],
   "author": "Robert Sköld <robert@publicclass>",
-  "license": "BSD",
+  "license": "MIT",
   "devDependencies": {
     "should": "~1.2.1",
     "mocha": "~1.7.1"
+  },
+  "dependencies": {
+    "geom-vec": "*",
+    "geom-mat": "*",
+    "geom-poly": "*"
   }
 }

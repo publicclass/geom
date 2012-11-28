@@ -17,13 +17,13 @@
         clear: function(){
           ctx.clearRect(0,0,canvas.width,canvas.height)
         },
-        poly: function(poly){
+        poly: function(p){
           ctx.beginPath();
-          var v = poly.vertices[0]
+          var v = p.vertices[0]
             , x = v[0]
             , y = v[1];
-          for(var i=0; i < poly.edges.length; i++){
-            var e = poly.edges[i];
+          for(var i=0; i < p.edges.length; i++){
+            var e = p.edges[i];
             ctx.moveTo(x,y)
             ctx.lineTo(x+e[0],y+e[1]);
 
@@ -49,7 +49,7 @@
           ctx.closePath();
 
           // draw centroid
-          var c = poly.centroid()
+          var c = poly.centroid(p)
           ctx.fillRect(c[0]-1,c[1]-1,2,2)
           vec.free(c)
 
@@ -85,98 +85,99 @@
     <script>
       var geom = require('geom')
         , vec = geom.vec
-        , mat = geom.mat;
+        , mat = geom.mat
+        , poly = geom.poly;
 
       // TODO test a collision
 
-      function Polygon(){
-        this.length = 0;
-        this.vertices = []
-        this.edges = []
-      }
-      Polygon.prototype = {
+      // function Polygon(){
+      //   this.length = 0;
+      //   this.vertices = []
+      //   this.edges = []
+      // }
+      // Polygon.prototype = {
 
-        add: function(x,y){
-          var v = vec.make(x,y)
-          if( this.length ){
-            // an edge is a vector between the last and
-            // the current vertex
-            var p = this.vertices[this.length-1];
-            this.edges.push(vec.sub(v,p));
-          }
-          this.vertices.push(v);
-          this.length++;
-          return this;
-        },
+      //   add: function(x,y){
+      //     var v = vec.make(x,y)
+      //     if( this.length ){
+      //       // an edge is a vector between the last and
+      //       // the current vertex
+      //       var p = this.vertices[this.length-1];
+      //       this.edges.push(vec.sub(v,p));
+      //     }
+      //     this.vertices.push(v);
+      //     this.length++;
+      //     return this;
+      //   },
 
-        close: function(){
-          if( this.length ){
-            // an edge is a vector between the last and
-            // the current vertex
-            var p = this.vertices[this.length-1]
-            var v = this.vertices[0];
-            this.edges.push(vec.sub(v,p));
-          }
-          return this;
-        },
+      //   close: function(){
+      //     if( this.length ){
+      //       // an edge is a vector between the last and
+      //       // the current vertex
+      //       var p = this.vertices[this.length-1]
+      //       var v = this.vertices[0];
+      //       this.edges.push(vec.sub(v,p));
+      //     }
+      //     return this;
+      //   },
 
-        area: function(){
-          var n = this.vertices.length;
-          return .5 * this.vertices.reduce(function(sum,p,i,V){
-            var q = V[(i+1)%n];
-            return sum + p[0] * q[1] - q[0] * p[1];
-          },0)
-        },
+      //   area: function(){
+      //     var n = this.vertices.length;
+      //     return .5 * this.vertices.reduce(function(sum,p,i,V){
+      //       var q = V[(i+1)%n];
+      //       return sum + p[0] * q[1] - q[0] * p[1];
+      //     },0)
+      //   },
 
-        centroid: function(){
-          // generating the centroid
-          // based off of the vertices
-          var a = this.area()
-            , n = this.length
-            , P = this.vertices;
+      //   centroid: function(){
+      //     // generating the centroid
+      //     // based off of the vertices
+      //     var a = this.area()
+      //       , n = this.length
+      //       , P = this.vertices;
 
-          var c = vec.make();
-          for(var i=0; i < n; i++){
-            var p = this.vertices[i]
-              , q = this.vertices[(i+1)%n]
-              , ai = vec.cross(p,q);
-            c[0] += (p[0] + q[0]) * ai
-            c[1] += (p[1] + q[1]) * ai
-          }
-          var b = 1 / (6 * a);
-          return vec.mul(c,[b,b],c);
-        },
+      //     var c = vec.make();
+      //     for(var i=0; i < n; i++){
+      //       var p = this.vertices[i]
+      //         , q = this.vertices[(i+1)%n]
+      //         , ai = vec.cross(p,q);
+      //       c[0] += (p[0] + q[0]) * ai
+      //       c[1] += (p[1] + q[1]) * ai
+      //     }
+      //     var b = 1 / (6 * a);
+      //     return vec.mul(c,[b,b],c);
+      //   },
 
-        // `i` (interval) will be [min,max]
-        project: function(axis,i){
-          var dot = vec.dot(axis,this.vertices[0])
-          i = i || vec.make();
-          i[0] = dot
-          i[1] = dot
-          for(var j=0; j < this.length; j++){
-            dot = vec.dot(axis,this.vertices[j])
-            if( dot < i[0] )
-              i[0] = dot;
-            else if( dot > i[1] )
-              i[1] = dot;
-          }
-          return i
-        },
+      //   // `i` (interval) will be [min,max]
+      //   project: function(axis,i){
+      //     var dot = vec.dot(axis,this.vertices[0])
+      //     i = i || vec.make();
+      //     i[0] = dot
+      //     i[1] = dot
+      //     for(var j=0; j < this.length; j++){
+      //       dot = vec.dot(axis,this.vertices[j])
+      //       if( dot < i[0] )
+      //         i[0] = dot;
+      //       else if( dot > i[1] )
+      //         i[1] = dot;
+      //     }
+      //     return i
+      //   },
 
-        translate: function(x,y){
-          var t = vec.make(x,y)
-          for(var j=0; j < this.length; j++)
-            vec.add(this.vertices[j],t,this.vertices[j]);
-          vec.free(t)
-          return this
-        },
+      //   translate: function(x,y){
+      //     var t = vec.make(x,y)
+      //     for(var j=0; j < this.length; j++)
+      //       vec.add(this.vertices[j],t,this.vertices[j]);
+      //     vec.free(t)
+      //     return this
+      //   },
 
-        transform: function(mat){
-          for(var j=0; j < this.length; j++)
-            vec.transform(this.vertices[j],mat,this.vertices[j]);
-          return this
-        }
-      }
+      //   transform: function(mat){
+      //     for(var j=0; j < this.length; j++)
+      //       vec.transform(this.vertices[j],mat,this.vertices[j]);
+      //     return this
+      //   }
+      // }
 
       // based on algorithm at:
       // http://softsurfer.com/Archive/algorithm_0104/algorithm_0104B.htm
@@ -379,218 +380,136 @@
         }
       }
 
-      // http://www.codeproject.com/Articles/15573/2D-Polygon-Collision-Detection
-      // is polygon `a` going to collide with polygon `b`?
-      // `v` is the relative velocity of the polygons (a.velocity - b.velocity)
-      function collides(a,b,v){
-        var res = {
-          intersect: true,
-          willIntersect: true
-        }
-
-        var minIntervalDistance = Infinity;
-        var translationAxis = vec.make();
-        var nearestEdge = vec.make();
-        var axis = vec.make()
-        v = v || vec.make()
-        var cA, cB, cD;
-        var iA = vec.make();
-        var iB = vec.make();
-
-        // loop through all edges of both polygons
-        for(var i=0; i < (a.length+b.length); i++){
-          var edge = i < a.length ? a.edges[i] : b.edges[i-a.length]
-
-          vec.perp(edge,axis)
-          vec.norm(axis,axis)
-
-          a.project(axis,iA)
-          b.project(axis,iB)
-
-          // are they currently intersecting?
-          if( intervalDistance(iA,iB) > 0 ){
-            res.intersect = false;
-          }
-
-          // will they intersect?
-          var vProj = vec.dot(axis,v);
-          if( vProj < 0 )
-            iA[0] += vProj;
-          else
-            iA[1] += vProj;
-
-          var iD = intervalDistance(iA,iB);
-          if( iD > 0 ){
-            res.willIntersect = false;
-          }
-
-          // no intersection will and won't happen
-          if( !res.intersect && !res.willIntersect )
-            break;
-
-          // find out if it's the closest one
-          iD = Math.abs(iD);
-          if( iD < minIntervalDistance ){
-            minIntervalDistance = iD;
-            vec.copy(edge, nearestEdge);
-            vec.copy(axis,translationAxis);
-
-            cA = cA || a.centroid()
-            cB = cB || b.centroid()
-            cD = vec.sub(cA, cB, cD);
-            if( vec.dot(cD, translationAxis) < 0 )
-              vec.neg(translationAxis,translationAxis)
-          }
-        }
-
-        // the minimum translation vector can
-        // be used to push the polygons apart
-        if( res.willIntersect ){
-          translationAxis[0] *= minIntervalDistance;
-          translationAxis[1] *= minIntervalDistance;
-          res.minTranslationVector = translationAxis;
-          res.nearestEdge = nearestEdge;
-        } else {
-          vec.free(translationAxis)
-          vec.free(nearestEdge)
-        }
-
-        vec.free(iA)
-        vec.free(iB)
-        vec.free(cA)
-        vec.free(cB)
-        vec.free(cD)
-        vec.free(axis)
-
-        return res;
-      }
-
-      function intervalDistance(a,b){
-        return a[0] < b[0]
-          ? b[0] - a[1]
-          : a[0] - b[1];
-      }
-
-
 
       // should go straight through rect
       var S1 = [vec.make(0,5),vec.make(30,40)];
 
       // a little 10x10 CCW rectangle
-      var rect = new Polygon()
-      rect.add(10,10)
-      rect.add(10,20)
-      rect.add(20,20)
-      rect.add(20,10)
-      rect.close()
+      var rect = poly.make()
+      poly.add(rect,10,10)
+      poly.add(rect,10,20)
+      poly.add(rect,20,20)
+      poly.add(rect,20,10)
+      poly.close(rect)
 
       // a little CCW hexagon
-      var hex = new Polygon()
+      var hex = poly.make()
       var w = 10, a = 2 * Math.PI / 6;
       for(var i=5; i >= 0; i--)
-        hex.add( 40+w * Math.cos(i * a), 5+w * Math.sin(i * a) );
-      hex.close()
+        poly.add(hex, 40+w * Math.cos(i * a), 5+w * Math.sin(i * a) );
+      poly.close(hex)
+
+
+      // var hex2 = new Polygon()
+      // var w = 10, a = 2 * Math.PI / 6;
+      // for(var i=5; i >= 0; i--)
+      //   hex2.add(40+w * Math.cos(i * a), 5+w * Math.sin(i * a) );
+      // hex2.close()
+      // console.log('areas',hex2.area(),poly.area(hex))
+      // console.log('centroid',hex2.centroid(),poly.centroid(hex))
 
       // only to not ruin the diff
       mat.free(mat.alloc())
 
-      var hs = hex.centroid()
-      var rs = rect.centroid()
+      var hs = poly.centroid(hex)
+      var rs = poly.centroid(rect)
 
-      function move(poly,to){
-        var c = poly.centroid()
+      function move(p,to){
+        var c = poly.centroid(p)
         var d = vec.sub(to,c)
-        poly.translate(d[0],d[1]);
+        poly.translate(p, d[0] ,d[1]);
         vec.free(c)
         vec.free(d)
       }
 
-      function start(){
-
+      function restart(){
+        console.log('restart',hs,rs)
         // move the polygons back to start
         move(hex,hs);
         move(rect,rs);
 
-        var vh = vec.make(-.5,0)
-        var vr = vec.make(0,.1)
-        var frames = 80;
-        var vd = 0;
-        var md = 0;
-        function run(){
-          --frames && webkitRequestAnimationFrame(run);
-          // console.time('run')
-
-          var va = vec._unallocated.length;
-          var ma = mat._unallocated.length;
-
-          // console.time('collision')
-          var v = vec.sub(vh,vr)//vec.make(-.5,0) // velocity of polygon
-          var c = collides(hex, rect, v)
-          if( c.willIntersect ){
-            // offset hex to avoid intersection
-            var t = vec.add(vh,c.minTranslationVector);
-            hex.translate(t[0],t[1]);
-            vec.free(t)
-
-            // offset rect to avoid intersection
-            var t = vec.sub(vr,c.minTranslationVector);
-            rect.translate(t[0],t[1]);
-            vec.free(t)
-
-            // console.log(c)
-
-            // reflect the hex
-            var i = vec.norm(vh)
-              , n = vec.norm(c.nearestEdge);
-            vec.perp(n,n)
-            var r = vec.reflect(i,n)
-            var l = vec.len(vh)
-            r[0] *= l
-            r[1] *= l
-            vec.copy(r,vh)
-
-            // reflect the rect
-            vec.norm(vr,i)
-            vec.norm(c.nearestEdge,n);
-            vec.perp(n,n)
-            vec.reflect(i,n,r)
-            var l = vec.len(vr)
-            vec.perp(r,r)
-            r[0] *= l
-            r[1] *= l
-            vec.copy(r,vr)
-            vec.free(r)
-            vec.free(n)
-            vec.free(i)
-          } else {
-            hex.translate(vh[0],vh[1])
-            rect.translate(vr[0],vr[1])
-          }
-          vec.free(v)
-          vec.free(c.minTranslationVector)
-          // console.timeEnd('collision')
-
-          // draw
-          // console.time('draw')
-          draw.clear()
-          draw.line(S1).stroke('blue');
-          draw.poly(rect).stroke('red');
-          draw.poly(hex).stroke('orange')
-          // console.timeEnd('draw')
-
-          // intersectsPoly(hex,S1)
-          // intersectsPoly(rect,S1)
-
-          var vb = vec._unallocated.length;
-          var mb = mat._unallocated.length;
-          vd = vb-va;
-          md = mb-ma;
-          // console.timeEnd('run')
-        }
-        run()
+        vh = vec.make(-.5,0)
+        vr = vec.make(0,.1)
       }
 
-      document.addEventListener('click',start)
+      var vh = vec.make(-.5,0)
+      var vr = vec.make(0,.1)
+      var vd = 0;
+      var md = 0;
+      function run(){
+        webkitRequestAnimationFrame(run);
+        // console.time('run')
+
+        var va = vec._unallocated.length;
+        var ma = mat._unallocated.length;
+
+        // console.time('collision')
+        var v = vec.sub(vh,vr)//vec.make(-.5,0) // velocity of polygon
+        var c = poly.collides(hex, rect, v)
+        if( c.willIntersect ){
+          // offset hex to avoid intersection
+          var t = vec.add(vh,c.minTranslationVector);
+          poly.translate(hex,t[0],t[1]);
+          vec.free(t)
+
+          // offset rect to avoid intersection
+          var t = vec.sub(vr,c.minTranslationVector);
+          poly.translate(rect,t[0],t[1]);
+          vec.free(t)
+
+          console.log(c)
+
+          // reflect the hex
+          var i = vec.norm(vh)
+            , n = vec.norm(c.nearestEdge);
+          vec.perp(n,n)
+          var r = vec.reflect(i,n)
+          var l = vec.len(vh)
+          r[0] *= l
+          r[1] *= l
+          vec.copy(r,vh)
+
+          // reflect the rect
+          vec.norm(vr,i)
+          vec.norm(c.nearestEdge,n);
+          vec.perp(n,n)
+          vec.reflect(i,n,r)
+          var l = vec.len(vr)
+          vec.perp(r,r)
+          r[0] *= l
+          r[1] *= l
+          vec.copy(r,vr)
+          vec.free(r)
+          vec.free(n)
+          vec.free(i)
+        } else {
+          poly.translate(hex, vh[0], vh[1])
+          poly.translate(rect,vr[0], vr[1])
+        }
+        vec.free(v)
+        vec.free(c.minTranslationVector)
+        // console.timeEnd('collision')
+
+        // draw
+        // console.time('draw')
+        draw.clear()
+        draw.line(S1).stroke('blue');
+        draw.poly(rect).stroke('red');
+        draw.poly(hex).stroke('orange')
+        // console.timeEnd('draw')
+
+        // intersectsPoly(hex,S1)
+        // intersectsPoly(rect,S1)
+
+        var vb = vec._unallocated.length;
+        var mb = mat._unallocated.length;
+        vd = vb-va;
+        md = mb-ma;
+        // console.timeEnd('run')
+      }
+      run()
+
+      document.addEventListener('click',restart)
 
 // TODO segment w radius
 

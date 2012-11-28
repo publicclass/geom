@@ -2,11 +2,12 @@
   "name": "geom",
   "repo": "publicclass/geom",
   "description": "A collection of terse, efficient geometry tools.",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "keywords": [],
   "dependencies": {
     "publicclass/geom-vec": "*",
-    "publicclass/geom-mat": "*"
+    "publicclass/geom-mat": "*",
+    "publicclass/geom-poly": "*"
   },
   "development": {},
   "license": "MIT",
