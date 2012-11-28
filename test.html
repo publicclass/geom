@@ -381,6 +381,7 @@
 
         var minIntervalDistance = Infinity;
         var translationAxis = vec.make();
+        var nearestEdge = vec.make();
         var axis = vec.make()
         v = v || vec.make()
         var cA, cB, cD;
@@ -415,16 +416,14 @@
           }
 
           // no intersection will and won't happen
-          if( !res.intersect && !res.willIntersect ){
-            console.log('breaking, no intersection')
+          if( !res.intersect && !res.willIntersect )
             break;
-          }
 
           // find out if it's the closest one
           iD = Math.abs(iD);
           if( iD < minIntervalDistance ){
             minIntervalDistance = iD;
-            res.edge = edge;
+            vec.copy(edge, nearestEdge);
             vec.copy(axis,translationAxis);
 
             cA = cA || a.centroid()
@@ -435,20 +434,24 @@
           }
         }
 
-        vec.free(iA)
-        vec.free(iB)
-        vec.free(cA)
-        vec.free(cB)
-        vec.free(cD)
-        vec.free(axis)
-
         // the minimum translation vector can
         // be used to push the polygons apart
         if( res.willIntersect ){
           translationAxis[0] *= minIntervalDistance;
           translationAxis[1] *= minIntervalDistance;
           res.minTranslationVector = translationAxis;
+          res.nearestEdge = nearestEdge;
+        } else {
+          vec.free(translationAxis)
+          vec.free(nearestEdge)
         }
+
+        vec.free(iA)
+        vec.free(iB)
+        vec.free(cA)
+        vec.free(cB)
+        vec.free(cD)
+        vec.free(axis)
 
         return res;
       }
@@ -479,59 +482,120 @@
         hex.add( 40+w * Math.cos(i * a), 5+w * Math.sin(i * a) );
       hex.close()
 
-      var v = vec.make(-.5,0) // velocity of polygon
-      var frames = 50;
-      var d = 0;
-      function run(){
-        --frames && webkitRequestAnimationFrame(run);
-        console.time('run')
+      // only to not ruin the diff
+      mat.free(mat.alloc())
 
-        var a = vec._unallocated.length;
+      var hs = hex.centroid()
+      var rs = rect.centroid()
 
-        console.time('collision')
-        var c = collides(hex, rect, v)
-        if( c.willIntersect ){
-          var t = vec.add(v,c.minTranslationVector);
-          var m = mat.translate(t[0],t[1]);
-          hex.transform(m)
+      function start(){
 
-          // TODO reflect the polygon,
-          // need the infliction angle (v?) and edge normal (c.minTranslationVector?)
-          var i = vec.norm(v)
-            , n = vec.norm(vec.perp(c.edge));
-          var r = vec.reflect(i,n)
-          var l = vec.len(v)
-          r[0] *= l
-          r[1] *= l
-          vec.copy(r,v)
-          vec.free(r)
-          vec.free(n)
-          vec.free(i)
-        } else {
-          var m = mat.translate(v[0],v[1]);
-          hex.transform(m)
-        }
-        vec.free(c.minTranslationVector)
-        vec.free(t)
+        // move the polygons back to start
+        var hc = hex.centroid()
+        var hd = vec.sub(hs,hc)
+        var m = mat.translate(hd[0],hd[1]);
+        hex.transform(m)
         mat.free(m)
-        console.timeEnd('collision')
+        vec.free(hc)
+        vec.free(hd)
 
-        // draw
-        console.time('draw')
-        draw.clear()
-        draw.line(S1).stroke('blue');
-        draw.poly(rect).stroke('red');
-        draw.poly(hex).stroke('orange')
-        console.timeEnd('draw')
+        var rc = rect.centroid()
+        var rd = vec.sub(rs,rc)
+        var m = mat.translate(rd[0],rd[1]);
+        rect.transform(m)
+        mat.free(m)
+        vec.free(rc)
+        vec.free(rd)
 
-        // intersectsPoly(hex,S1)
-        // intersectsPoly(rect,S1)
+        var vh = vec.make(-.5,0)
+        var vr = vec.make(0,.1)
+        var frames = 80;
+        var vd = 0;
+        var md = 0;
+        function run(){
+          --frames && webkitRequestAnimationFrame(run);
+          // console.time('run')
 
-        var b = vec._unallocated.length;
-        d = b-a;
-        console.timeEnd('run')
+          var va = vec._unallocated.length;
+          var ma = mat._unallocated.length;
+
+          // console.time('collision')
+          var v = vec.sub(vh,vr)//vec.make(-.5,0) // velocity of polygon
+          var c = collides(hex, rect, v)
+          if( c.willIntersect ){
+            // offset hex to avoid intersection
+            var t = vec.add(vh,c.minTranslationVector);
+            var m = mat.translate(t[0],t[1]);
+            hex.transform(m)
+            vec.free(t)
+            mat.free(m)
+
+            // offset rect to avoid intersection
+            var t = vec.sub(vr,c.minTranslationVector);
+            var m = mat.translate(t[0],t[1]);
+            rect.transform(m)
+            vec.free(t)
+            mat.free(m)
+
+            // console.log(c)
+
+            // reflect the hex
+            var i = vec.norm(vh)
+              , n = vec.norm(c.nearestEdge);
+            vec.perp(n,n)
+            var r = vec.reflect(i,n)
+            var l = vec.len(vh)
+            r[0] *= l
+            r[1] *= l
+            vec.copy(r,vh)
+
+            // reflect the rect
+            vec.norm(vr,i)
+            vec.norm(c.nearestEdge,n);
+            vec.perp(n,n)
+            vec.reflect(i,n,r)
+            var l = vec.len(vr)
+            vec.perp(r,r)
+            r[0] *= l
+            r[1] *= l
+            vec.copy(r,vr)
+            vec.free(r)
+            vec.free(n)
+            vec.free(i)
+          } else {
+            var m = mat.translate(vh[0],vh[1]);
+            hex.transform(m)
+            mat.free(m)
+
+            var m = mat.translate(vr[0],vr[1]);
+            rect.transform(m)
+            mat.free(m)
+          }
+          vec.free(v)
+          vec.free(c.minTranslationVector)
+          // console.timeEnd('collision')
+
+          // draw
+          // console.time('draw')
+          draw.clear()
+          draw.line(S1).stroke('blue');
+          draw.poly(rect).stroke('red');
+          draw.poly(hex).stroke('orange')
+          // console.timeEnd('draw')
+
+          // intersectsPoly(hex,S1)
+          // intersectsPoly(rect,S1)
+
+          var vb = vec._unallocated.length;
+          var mb = mat._unallocated.length;
+          vd = vb-va;
+          md = mb-ma;
+          // console.timeEnd('run')
+        }
+        run()
       }
-      run()
+
+      document.addEventListener('click',start)
 
 // TODO segment w radius
 
