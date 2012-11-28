@@ -1,0 +1,528 @@
+
+<!doctype html>
+<html>
+  <head>
+    <meta charset='utf8'>
+    <title>geom</title>
+  </head>
+  <body>
+    <canvas id='c' width="600" height="400"></canvas>
+    <script src='build/build.js'></script>
+    <script>
+      var canvas = document.getElementById('c')
+        , ctx = canvas.getContext('2d');
+      ctx.scale(5,5)
+
+      var draw = {
+        clear: function(){
+          ctx.clearRect(0,0,canvas.width,canvas.height)
+        },
+        poly: function(poly){
+          ctx.beginPath();
+          var v = poly.vertices[0]
+            , x = v[0]
+            , y = v[1];
+          for(var i=0; i < poly.edges.length; i++){
+            var e = poly.edges[i];
+            ctx.moveTo(x,y)
+            ctx.lineTo(x+e[0],y+e[1]);
+
+            // draw normal
+            var n = vec.perp(e)
+            vec.norm(n,n)
+            var m = vec.lerp([x,y],[x+e[0],y+e[1]],.5)
+            ctx.moveTo(m[0],m[1])
+            ctx.lineTo(m[0]+n[0]*5,m[1]+n[1]*5)
+
+            // draw index
+            ctx.font = '3px courier'
+            var t = ctx.measureText(i).width;
+            ctx.fillText(i,m[0]-t/2,m[1])
+
+            // free the vectors
+            vec.free(n)
+            vec.free(m)
+
+            x += e[0]
+            y += e[1];
+          }
+          ctx.closePath();
+
+          // draw centroid
+          var c = poly.centroid()
+          ctx.fillRect(c[0]-1,c[1]-1,2,2)
+          vec.free(c)
+
+          return draw;
+        },
+        line: function(S){
+          var a = S[0], b = S[1];
+          ctx.beginPath();
+          ctx.moveTo(a[0],a[1])
+          ctx.lineTo(b[0],b[1])
+          ctx.closePath();
+          return draw;
+        },
+        point: function(a,r){
+          r = r || 1
+          ctx.beginPath();
+          ctx.rect(a[0]-r,a[1]-r,r+r,r+r);
+          ctx.closePath();
+          return draw;
+        },
+        stroke: function(style){
+          ctx.strokeStyle = style
+          ctx.stroke()
+          return draw;
+        },
+        fill: function(style){
+          ctx.fillStyle = style
+          ctx.fill()
+          return draw;
+        }
+      }
+    </script>
+    <script>
+      var geom = require('geom')
+        , vec = geom.vec
+        , mat = geom.mat;
+
+      // TODO test a collision
+
+      function Polygon(){
+        this.length = 0;
+        this.vertices = []
+        this.edges = []
+      }
+      Polygon.prototype = {
+
+        add: function(x,y){
+          var v = vec.make(x,y)
+          if( this.length ){
+            // an edge is a vector between the last and
+            // the current vertex
+            var p = this.vertices[this.length-1];
+            this.edges.push(vec.sub(v,p));
+          }
+          this.vertices.push(v);
+          this.length++;
+          return this;
+        },
+
+        close: function(){
+          if( this.length ){
+            // an edge is a vector between the last and
+            // the current vertex
+            var p = this.vertices[this.length-1]
+            var v = this.vertices[0];
+            this.edges.push(vec.sub(v,p));
+          }
+          return this;
+        },
+
+        area: function(){
+          var n = this.vertices.length;
+          return .5 * this.vertices.reduce(function(sum,p,i,V){
+            var q = V[(i+1)%n];
+            return sum + p[0] * q[1] - q[0] * p[1];
+          },0)
+        },
+
+        centroid: function(){
+          // generating the centroid
+          // based off of the vertices
+          var a = this.area()
+            , n = this.length
+            , P = this.vertices;
+
+          var c = vec.make();
+          for(var i=0; i < n; i++){
+            var p = this.vertices[i]
+              , q = this.vertices[(i+1)%n]
+              , ai = vec.cross(p,q);
+            c[0] += (p[0] + q[0]) * ai
+            c[1] += (p[1] + q[1]) * ai
+          }
+          var b = 1 / (6 * a);
+          return vec.mul(c,[b,b],c);
+        },
+
+        // `i` (interval) will be [min,max]
+        project: function(axis,i){
+          var dot = vec.dot(axis,this.vertices[0])
+          i = i || vec.make();
+          i[0] = dot
+          i[1] = dot
+          for(var j=0; j < this.length; j++){
+            dot = vec.dot(axis,this.vertices[j])
+            if( dot < i[0] )
+              i[0] = dot;
+            else if( dot > i[1] )
+              i[1] = dot;
+          }
+          return i
+        },
+
+        transform: function(mat){
+          for(var j=0; j < this.length; j++)
+            vec.transform(this.vertices[j],mat,this.vertices[j]);
+        }
+      }
+
+      // based on algorithm at:
+      // http://softsurfer.com/Archive/algorithm_0104/algorithm_0104B.htm
+      // S = [v1,v2], I=v
+      // returns:
+      //  0=no intersect
+      //  1=intersects (intersection in I)
+      //  2=overlap in segment(segment in I)
+      var EPS = 1e-8;
+      function intersectSegments(S1, S2, I){
+        var u = vec.sub(S1[1],S1[0])
+        var v = vec.sub(S2[1],S2[0])
+        var w = vec.sub(S1[0],S2[0])
+        var D = vec.cross(u,v)
+
+        // test if their parallel
+        if( Math.abs(D) < EPS ){
+          if( vec.cross(u,w) != 0 || vec.cross(v,w) != 0 ){
+            return 0; // not collinear
+          }
+
+          // they are collinear or degenerate
+          // check if they're degenerate points
+          var du = vec.dot(u,u)
+          var dv = vec.dot(v,v)
+          if( du == 0 && dv == 0 ){ // both segments are points
+            if( S1[0] != S2[0] )    // they are distinct points
+              return 0;
+            vec.copy(I,S1[0]);     // they are the same point
+            return 1;
+          }
+
+          if( du == 0 ){            // S1 is a single point
+            if( inSegment(S1[0],S2) == 0 )  // but not in S2
+              return 0;
+            vec.copy(I,S1[0])
+            return 1;
+          }
+
+          if( dv == 0 ){            // S2 is a single point
+            if( inSegment(S2[0],S1) == 0 )  // but not in S1
+              return 0;
+            vec.copy(I,S2[0])
+            return 1;
+          }
+
+          // they are collinear - get overlap (or not)
+          var t0, t1;               // endpoints od S1 in eqn for S2
+          var w2 = vec.sub(S1[1],S2[0])
+          if(v[0] != 0){
+            t0 = w[0] / v[0]
+            t1 = w2[0] / v[0]
+          } else {
+            t0 = w[1] / v[1]
+            t1 = w2[1] / v[1]
+          }
+
+          // must have t0 smaller than t1
+          if( t0 > t1 ){
+            var t = t0; // swap
+            t0 = t1;
+            t1 = t;
+          }
+
+          if( t0 > 1 || t1 < 0 )
+            return 0;               // no overlap
+
+          t0 = Math.max(0,t0);
+          t1 = Math.min(1,t1);
+          if( t0 == t1 ){   // intersection is a point
+            // *I0 = S2.P0 + t0 * v;
+            vec.add(S2[0],vec.mul(v,[t0,t0]),I);
+            return 1;
+          }
+
+          // they overlap in a valid subsegment
+          // *I[0] = S2.P0 + t0 * v;
+          vec.add(S2[0],vec.mul(v,[t0,t0]),I[0]=vec.make());
+          // *I[1] = S2.P0 + t1 * v;
+          vec.add(S2[0],vec.mul(v,[t1,t1]),I[1]=vec.make());
+          return 2;
+        }
+
+        // segments are skew and may intersect in a point
+        // get the intersect parameter for S1
+        var sI = vec.cross(v,w) / D;
+        if( sI < 0 || sI > 1 )  // no intersect with S1
+          return 0;
+
+        var tI = vec.cross(u,w) / D;
+        if( tI < 0 || tI > 1 )  // no intersect with S2
+          return 0;
+
+        // compute S1 intersect point
+        // *I0 = S1.P0 + sI * u;
+        vec.add(S1[0],vec.mul(u,[sI,sI]),I);
+        return 1;
+      }
+
+      function inSegment(P, S){
+        // shorter version than the one below
+        var a = S[0][0] != S[1][0] ? 0 : 1;
+        if( S[0][a] <= P[a] && P[a] <= S[1][a] )
+          return 1;
+        if( S[0][a] >= P[a] && P[a] >= S[1][a] )
+          return 1;
+        return 0;
+
+        // S is not vertical, test X
+        if( S[0][0] != S[1][0] ){
+          if( S[0][0] <= P[0] && P[0] <= S[1][0] )
+            return 1;
+          if( S[0][0] >= P[0] && P[0] >= S[1][0] )
+            return 1;
+
+        // S is vertical, test Y
+        } else {
+          if( S[0][1] <= P[1] && P[1] <= S[1][1] )
+            return 1;
+          if( S[0][1] >= P[1] && P[1] >= S[1][1] )
+            return 1;
+        }
+        return 0;
+      }
+
+
+      // ported from:
+      // http://en.wikibooks.org/wiki/Algorithm_Implementation/Geometry/Convex_hull/Monotone_chain
+      function convexHull(P){
+        var n = P.length
+          , k = 0
+          , H = new Array(2*n);
+
+        // sort points lexicographically
+        // NOTE: this will modify P (TODO concat?)
+        P.sort(function(a,b){ return a[0] - b[0] || a[1] - b[1]; })
+
+        // build lower hull
+        for(var i=0; i < n; i++){
+          while( k >= 2 && cross(H[k-2], H[k-1], P[i]) <= 0 )
+            k--;
+          H[k++] = P[i];
+        }
+
+        // build upper hull
+        for(var i=n-2, t=k+1; i >= 0; i--){
+          while( k >= t && cross(H[k-2], H[k-1], P[i]) <= 0 )
+            k--;
+          H[k++] = P[i]
+        }
+
+        H.length = k;
+        return H;
+      }
+      function cross(o,a,b){
+        return (a[0]-o[0]) * (b[1]-o[1]) - (a[1]-o[1]) * (b[0]-o[0])
+      }
+
+      // a naive implementation which checks is segment S1
+      // intersects any of the polygons edges.
+      function intersectsPoly(poly,S1){
+        var I = [];
+        var v1 = poly.vertices[0];
+        var S2 = [];
+        for( var i=0; i < poly.length; i++ ){
+          S2[0] = v1;
+          S2[1] = poly.vertices[(i+1)%poly.length];
+
+          // TODO start with the vertex closest to S1[0]. that way
+          //      we should be able to stop at the first intersection
+          //      and start the bounce.
+
+          switch(intersectSegments(S1,S2,I)){
+            case 0:
+              console.log('S1 - S2 does not intersect');
+              break;
+            case 1:
+              console.log('S1 - S2 does intersect at single point: '+I,S2);
+              draw.point(I).fill('green')
+
+              // infliction angle (ray)
+              var R = vec.sub(S1[1],S1[0])
+              // normal of the intersected segment
+              var n = vec.sub(S2[0],S2[1]);
+              vec.perp(n,n)
+              vec.norm(n,n)
+              vec.norm(R,R)
+              var r = vec.reflect(R,n)
+              vec.mul(r,[10,10],r)
+              vec.add(I,r,r)
+              draw.line([I,r]).stroke('green')
+              break;
+            case 2:
+              console.log('S1 - S2 does intersect at segment',I);
+              draw.line(I).stroke('pink')
+              // TODO reflect on the closest part of I
+              break;
+          }
+          v1 = S2[1];
+        }
+      }
+
+      // http://www.codeproject.com/Articles/15573/2D-Polygon-Collision-Detection
+      // is polygon `a` going to collide with polygon `b`?
+      // `v` is the relative velocity of the polygons (a.velocity - b.velocity)
+      function collides(a,b,v){
+        var res = {
+          intersect: true,
+          willIntersect: true
+        }
+
+        var minIntervalDistance = Infinity;
+        var translationAxis = vec.make();
+        var axis = vec.make()
+        v = v || vec.make()
+        var cA, cB, cD;
+        var iA = vec.make();
+        var iB = vec.make();
+
+        // loop through all edges of both polygons
+        for(var i=0; i < (a.length+b.length); i++){
+          var edge = i < a.length ? a.edges[i] : b.edges[i-a.length]
+
+          vec.perp(edge,axis)
+          vec.norm(axis,axis)
+
+          a.project(axis,iA)
+          b.project(axis,iB)
+
+          // are they currently intersecting?
+          if( intervalDistance(iA,iB) > 0 ){
+            res.intersect = false;
+          }
+
+          // will they intersect?
+          var vProj = vec.dot(axis,v);
+          if( vProj < 0 )
+            iA[0] += vProj;
+          else
+            iA[1] += vProj;
+
+          var iD = intervalDistance(iA,iB);
+          if( iD > 0 ){
+            res.willIntersect = false;
+          }
+
+          // no intersection will and won't happen
+          if( !res.intersect && !res.willIntersect ){
+            console.log('breaking, no intersection')
+            break;
+          }
+
+          // find out if it's the closest one
+          iD = Math.abs(iD);
+          if( iD < minIntervalDistance ){
+            minIntervalDistance = iD;
+            vec.copy(axis,translationAxis);
+
+            cA = cA || a.centroid()
+            cB = cB || b.centroid()
+            cD = vec.sub(cA, cB, cD);
+            if( vec.dot(cD, translationAxis) < 0 )
+              vec.neg(translationAxis,translationAxis)
+          }
+        }
+
+        vec.free(iA)
+        vec.free(iB)
+        vec.free(cA)
+        vec.free(cB)
+        vec.free(cD)
+        vec.free(axis)
+
+        // the minimum translation vector can
+        // be used to push the polygons apart
+        if( res.willIntersect ){
+          translationAxis[0] *= minIntervalDistance;
+          translationAxis[1] *= minIntervalDistance;
+          res.minTranslationVector = translationAxis;
+        }
+
+        return res;
+      }
+
+      function intervalDistance(a,b){
+        return a[0] < b[0]
+          ? b[0] - a[1]
+          : a[0] - b[1];
+      }
+
+
+
+      // should go straight through rect
+      var S1 = [vec.make(0,5),vec.make(30,40)];
+
+      // a little 10x10 CCW rectangle
+      var rect = new Polygon()
+      rect.add(10,10)
+      rect.add(10,20)
+      rect.add(20,20)
+      rect.add(20,10)
+      rect.close()
+
+      // a little CCW hexagon
+      var hex = new Polygon()
+      var w = 10, a = 2 * Math.PI / 6;
+      for(var i=5; i >= 0; i--)
+        hex.add( 40+w * Math.cos(i * a), 5+w * Math.sin(i * a) );
+      hex.close()
+
+      var v = vec.make(-.5,0) // velocity of polygon
+      var frames = 50;
+      var d = 0;
+      function run(){
+        --frames && webkitRequestAnimationFrame(run);
+        console.time('run')
+
+        var a = vec._unallocated.length;
+
+        var c = collides(rect,hex,v)
+        console.log('collision results',c)
+
+        if( c.willIntersect ){
+          var t = vec.sub(v,c.minTranslationVector);
+          var m = mat.translate(t[0],t[1]);
+          hex.transform(m)
+
+          // TODO reflect the polygon,
+          // need the infliction angle (v?) and edge normal...
+          // var r = vec.reflect(i,n)
+        } else {
+          var m = mat.translate(v[0],v[1]);
+          hex.transform(m)
+        }
+        vec.free(c.minTranslationVector)
+        vec.free(t)
+        mat.free(m)
+
+        // draw
+        draw.clear()
+        draw.line(S1).stroke('blue');
+        draw.poly(rect).stroke('red');
+        draw.poly(hex).stroke('orange')
+
+        // intersectsPoly(hex,S1)
+        // intersectsPoly(rect,S1)
+
+        var b = vec._unallocated.length;
+        d = b-a;
+        console.timeEnd('run')
+      }
+      run()
+
+// TODO segment w radius
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "geom",
+  "repo": "publicclass/geom",
+  "description": "A collection of terse, efficient geometry tools.",
+  "version": "0.0.1",
+  "keywords": [],
+  "dependencies": {
+    "publicclass/geom-vec": "*",
+    "publicclass/geom-mat": "*"
+  },
+  "development": {},
+  "license": "MIT",
+  "scripts": [
+    "index.js"
+  ]
+}
