@@ -163,9 +163,18 @@
           return i
         },
 
+        translate: function(x,y){
+          var t = vec.make(x,y)
+          for(var j=0; j < this.length; j++)
+            vec.add(this.vertices[j],t,this.vertices[j]);
+          vec.free(t)
+          return this
+        },
+
         transform: function(mat){
           for(var j=0; j < this.length; j++)
             vec.transform(this.vertices[j],mat,this.vertices[j]);
+          return this
         }
       }
 
@@ -488,24 +497,19 @@
       var hs = hex.centroid()
       var rs = rect.centroid()
 
+      function move(poly,to){
+        var c = poly.centroid()
+        var d = vec.sub(to,c)
+        poly.translate(d[0],d[1]);
+        vec.free(c)
+        vec.free(d)
+      }
+
       function start(){
 
         // move the polygons back to start
-        var hc = hex.centroid()
-        var hd = vec.sub(hs,hc)
-        var m = mat.translate(hd[0],hd[1]);
-        hex.transform(m)
-        mat.free(m)
-        vec.free(hc)
-        vec.free(hd)
-
-        var rc = rect.centroid()
-        var rd = vec.sub(rs,rc)
-        var m = mat.translate(rd[0],rd[1]);
-        rect.transform(m)
-        mat.free(m)
-        vec.free(rc)
-        vec.free(rd)
+        move(hex,hs);
+        move(rect,rs);
 
         var vh = vec.make(-.5,0)
         var vr = vec.make(0,.1)
@@ -525,17 +529,13 @@
           if( c.willIntersect ){
             // offset hex to avoid intersection
             var t = vec.add(vh,c.minTranslationVector);
-            var m = mat.translate(t[0],t[1]);
-            hex.transform(m)
+            hex.translate(t[0],t[1]);
             vec.free(t)
-            mat.free(m)
 
             // offset rect to avoid intersection
             var t = vec.sub(vr,c.minTranslationVector);
-            var m = mat.translate(t[0],t[1]);
-            rect.transform(m)
+            rect.translate(t[0],t[1]);
             vec.free(t)
-            mat.free(m)
 
             // console.log(c)
 
@@ -563,13 +563,8 @@
             vec.free(n)
             vec.free(i)
           } else {
-            var m = mat.translate(vh[0],vh[1]);
-            hex.transform(m)
-            mat.free(m)
-
-            var m = mat.translate(vr[0],vr[1]);
-            rect.transform(m)
-            mat.free(m)
+            hex.translate(vh[0],vh[1])
+            rect.translate(vr[0],vr[1])
           }
           vec.free(v)
           vec.free(c.minTranslationVector)
