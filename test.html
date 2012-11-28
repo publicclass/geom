@@ -424,6 +424,7 @@
           iD = Math.abs(iD);
           if( iD < minIntervalDistance ){
             minIntervalDistance = iD;
+            res.edge = edge;
             vec.copy(axis,translationAxis);
 
             cA = cA || a.centroid()
@@ -487,17 +488,25 @@
 
         var a = vec._unallocated.length;
 
-        var c = collides(rect,hex,v)
-        console.log('collision results',c)
-
+        console.time('collision')
+        var c = collides(hex, rect, v)
         if( c.willIntersect ){
-          var t = vec.sub(v,c.minTranslationVector);
+          var t = vec.add(v,c.minTranslationVector);
           var m = mat.translate(t[0],t[1]);
           hex.transform(m)
 
           // TODO reflect the polygon,
-          // need the infliction angle (v?) and edge normal...
-          // var r = vec.reflect(i,n)
+          // need the infliction angle (v?) and edge normal (c.minTranslationVector?)
+          var i = vec.norm(v)
+            , n = vec.norm(vec.perp(c.edge));
+          var r = vec.reflect(i,n)
+          var l = vec.len(v)
+          r[0] *= l
+          r[1] *= l
+          vec.copy(r,v)
+          vec.free(r)
+          vec.free(n)
+          vec.free(i)
         } else {
           var m = mat.translate(v[0],v[1]);
           hex.transform(m)
@@ -505,12 +514,15 @@
         vec.free(c.minTranslationVector)
         vec.free(t)
         mat.free(m)
+        console.timeEnd('collision')
 
         // draw
+        console.time('draw')
         draw.clear()
         draw.line(S1).stroke('blue');
         draw.poly(rect).stroke('red');
         draw.poly(hex).stroke('orange')
+        console.timeEnd('draw')
 
         // intersectsPoly(hex,S1)
         // intersectsPoly(rect,S1)
