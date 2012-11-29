@@ -7,6 +7,7 @@
   </head>
   <body>
     <canvas id='c' width="600" height="400"></canvas>
+    <p id='v'></p>
     <script src='build/build.js'></script>
     <script>
       var canvas = document.getElementById('c')
@@ -384,14 +385,27 @@
       // should go straight through rect
       var S1 = [vec.make(0,5),vec.make(30,40)];
 
-      // a little 10x10 CCW rectangle
+      // a little 3x3 CCW rectangle
       var rect = poly.make()
       poly.add(rect,0,0)
-      poly.add(rect,0,10)
-      poly.add(rect,10,10)
-      poly.add(rect,10,0)
+      poly.add(rect,0,3)
+      poly.add(rect,3,3)
+      poly.add(rect,3,0)
       poly.close(rect)
       move(rect,[10,30])
+
+      // another little rectangle
+      var puck2 = poly.copy(rect);
+      move(puck2,[20,20])
+
+      // a little 5x20 CCW rectangle
+      var paddle = poly.make()
+      poly.add(paddle,0,0)
+      poly.add(paddle,0,5)
+      poly.add(paddle,20,5)
+      poly.add(paddle,20,0)
+      poly.close(paddle)
+      move(paddle,[50,77.5])
 
       // a little CCW hexagon
       var hex = poly.make()
@@ -431,16 +445,7 @@
         return null;
       }
 
-
-      // var hex2 = new Polygon()
-      // var w = 10, a = 2 * Math.PI / 6;
-      // for(var i=5; i >= 0; i--)
-      //   hex2.add(40+w * Math.cos(i * a), 5+w * Math.sin(i * a) );
-      // hex2.close()
-      // console.log('areas',hex2.area(),poly.area(hex))
-      // console.log('centroid',hex2.centroid(),poly.centroid(hex))
-
-      // only to not ruin the diff
+      // pre-allocate matrices
       mat.free(mat.alloc())
 
       var hs = poly.centroid(hex)
@@ -460,24 +465,61 @@
         move(hex,hs);
         move(rect,rs);
 
-        velocities = [vec.make(0,0),vec.make(-.5,.1)]
-
         stop()
       }
 
       function stop(){
         stopped = !stopped;
         console.log('stopped',stopped)
-        if( !stopped )
+        console.log('polygons',polygons)
+        if( !stopped ){
+          frames = 30
           run()
+        }
       }
 
       var vd = 0;
       var md = 0;
 
-      var polygons = [hex,rect];
-      var velocities = [vec.make(0,0),vec.make(-3,1)]
-
+      var polygons = [{
+          shape: hex,
+          fixed: true,
+          v: poly.centroid(hex),
+          c: poly.centroid(hex),
+          p: poly.centroid(hex),
+          n: vec.make(),
+          a: vec.make()
+        },{
+          shape: rect,
+          fixed: false,
+          v: poly.centroid(rect),
+          c: poly.centroid(rect),
+          p: poly.centroid(rect),
+          n: vec.make(),
+          a: vec.make(20000,1000)
+        },{
+          shape: puck2,
+          fixed: false,
+          v: poly.centroid(puck2),
+          c: poly.centroid(puck2),
+          p: poly.centroid(puck2),
+          n: vec.make(),
+          a: vec.make(1000,2000)
+        },{
+          shape: paddle,
+          fixed: true,
+          v: poly.centroid(paddle),
+          c: poly.centroid(paddle),
+          p: poly.centroid(paddle),
+          n: vec.make(),
+          a: vec.make()
+        }
+      ];
+      var z = vec.make()
+      var tsq = 1/60 * 1/60;
+      var intersections = []
+      var mmin = vec.make(10,77.5)
+      var mmax = vec.make(70,77.5)
       var stopped = false
       function run(){
         stopped || webkitRequestAnimationFrame(run);
@@ -486,168 +528,111 @@
         var va = vec._unallocated.length;
         var ma = mat._unallocated.length;
 
+        // move the paddle using the mouse
+        var pad = polygons[3];
+        var m = vec.make(mx,my)
+        vec.clamp(mmin,m,mmax,m)
+        vec.copy(m,pad.c)
+        vec.copy(m,pad.p)
+        vec.free(m)
+        // console.log(m)
+
         for(var i=0; i < polygons.length; i++){
           var p = polygons[i]
-          var vp = velocities[i]
-          var b = oob(p)
+          var vp = p.v
+          var b = oob(p.shape)
           if( b ){
-            console.log('polygon intersects with bounds',b,vp)
             // offset b to avoid intersection
-            poly.translate(p,b[0],b[1]);
+            vec.add(p.c, b, p.c)
 
-            // flip velocity for bounce effect
-            // TODO test with verlet integration!
-            if( b[0] ) vp[0] = -vp[0]
-            if( b[1] ) vp[1] = -vp[1]
+            // flip velocity by adding it to current
+            // (moving the previous ahead)
+            if( b[0] ) p.p[0] = p.c[0] + p.v[0]
+            if( b[1] ) p.p[1] = p.c[1] + p.v[1]
+
+            vec.free(b)
           }
-          vec.free(b)
 
 
           for(var j=0; j < polygons.length; j++){
-            // skip myself
-            if( i === j ) continue;
+            if( i === j ) continue; // skip self
 
             var q = polygons[j];
-            var vq = velocities[j]
-            var v = vec.sub(vp,vq)
-            var c = poly.collides(p, q, v)
+            var v = vec.sub(p.v,q.v)
+            var c = poly.collides(p.shape, q.shape, v)
             if( c.willIntersect ){
               // offset to avoid intersection
-              var t = vec.make()
-              vec.add(vp,c.minTranslationVector,t);
-              poly.translate(p,t[0],t[1]);
-              vec.sub(vq,c.minTranslationVector,t);
-              poly.translate(q,t[0],t[1]);
-              vec.free(t)
-
-              // TODO figure out why it gets pushed away
-
-              // restrain
-              if( 0 ){
-                vp[0] = 0
-                vp[1] = 0
-                continue
+              if( !p.fixed ){
+                var t = vec.make()
+                vec.add(p.v,c.minTranslationVector,t)
+                vec.add(p.c,c.minTranslationVector,p.c)
+                vec.free(t)
               }
 
-              // reflect the rect
-              var I = vec.norm(vp)
-                , n = vec.perp(c.nearestEdge);
-              vec.norm(n,n)
-              var r = vec.reflect(I,n)
-              var l = vec.len(vp)
-              r[0] *= l
-              r[1] *= l
-              vec.copy(r,vp)
-
-              // reflect the rect
-              // TODO this must be wrong, it goes in the wrong direction
-              //      most of the time.
-              vec.norm(vq,I)
-              vec.reflect(I,n,r)
-              var l = vec.len(vq)
-              r[0] *= l
-              r[1] *= l
-              vec.copy(r,vq)
-
-              console.log('collision result',c)
-              console.log('t %s',c.minTranslationVector.join(','))
-              console.log('e %s',c.nearestEdge.join(','))
-              console.log('vp[%s]',i,vp)
-              console.log('vq[%s]',j,vq)
+              if( q.shape === paddle ){
+                var I = vec.norm(p.v)
+                  , n = vec.perp(c.nearestEdge)
+                  , r = vec.reflect(I,vec.norm(n,n))
+                  , l = vec.len(p.v);
+                // divide the diff w. width to get the x normal
+                r[0] = (p.c[0] - q.c[0])/20
+                vec.smul(vec.norm(r,r),l,r)
+                vec.sub(p.c,r,p.p)
+                vec.free(r)
+                vec.free(I)
+                vec.free(n)
 
 
-              vec.free(r)
-              vec.free(n)
-              vec.free(I)
+              } else if( !p.fixed ){
+                var I = vec.norm(p.v)
+                  , n = vec.perp(c.nearestEdge)
+                  , r = vec.reflect(I,vec.norm(n,n));
+                var l = vec.len(p.v)
+                vec.smul(r,l,r)
+                vec.sub(p.c,r,p.p)
+                vec.free(r)
+                vec.free(I)
+                vec.free(n)
+              }
             }
             vec.free(v)
             vec.free(c.minTranslationVector)
             vec.free(c.nearestEdge)
           }
-          if( vp[0] || vp[1] )
-            poly.translate(p, vp[0], vp[1])
+
+          // verlet integration
+          vec.sub(p.c,p.p,p.v) // velocity = current - previous
+
+          // next = current + velocity + acceleration/2 * (timestep*timestep)
+          p.n[0] = p.c[0] + p.v[0] + .5 * p.a[0] * tsq
+          p.n[1] = p.c[1] + p.v[1] + .5 * p.a[1] * tsq
+
+          vec.copy(p.c,p.p) // previous = current
+          vec.copy(p.n,p.c) // current = next
+          vec.copy(z,p.a)   // reset acceleration
+
+          if( p.shape === rect )
+            document.getElementById('v').innerText = vec.len(p.v)
+          move(p.shape,p.c);
+
         }
-
-        // var b
-        // if( b = oob(hex) ){
-        //   console.log('hex intersects with bounds',b)
-        //   // offset b to avoid intersection
-        //   poly.translate(hex,b[0],b[1]);
-
-        //   // flip vh for bounce effect
-        //   if( b[0] ) vh[0] = -vh[0]
-        //   if( b[1] ) vh[1] = -vh[1]
-        // }
-        // vec.free(b)
-
-        // if( b = oob(rect) ){
-        //   console.log('rect intersects with bounds',b)
-        //   // offset b to avoid intersection
-        //   poly.translate(rect,b[0],b[1]);
-
-        //   // flip vr for bounce effect
-        //   if( b[0] ) vr[0] = -vr[0]
-        //   if( b[1] ) vr[1] = -vr[1]
-        // }
-        // vec.free(b)
-
-        // // console.time('collision')
-        // var v = vec.sub(vh,vr)//vec.make(-.5,0) // velocity of polygon
-        // var c = poly.collides(rect, hex, v)
-        // if( c.willIntersect ){
-        //   // offset hex to avoid intersection
-        //   // var t = vec.add(vh,c.minTranslationVector);
-        //   // poly.translate(hex,t[0],t[1]);
-        //   // vec.free(t)
-
-        //   // offset rect to avoid intersection
-        //   var t = vec.add(vr,c.minTranslationVector);
-        //   poly.translate(rect,t[0],t[1]);
-        //   vec.free(t)
-
-        //   console.log(c)
-
-        //   // reflect the rect
-        //   var i = vec.norm(vr)
-        //     , n = vec.norm(c.nearestEdge);
-        //   // vec.perp(n,n)
-        //   var r = vec.reflect(i,n)
-        //   var l = vec.len(vr)
-        //   r[0] *= l
-        //   r[1] *= l
-        //   vec.copy(r,vr)
-
-        //   // reflect the rect
-        //   // TODO this must be wrong, it goes in the wrong direction
-        //   //      most of the time.
-        //   // vec.norm(vr,i)
-        //   // vec.norm(c.nearestEdge,n);
-        //   // vec.perp(n,n)
-        //   // vec.reflect(i,n,r)
-        //   // var l = vec.len(vr)
-        //   // vec.perp(r,r)
-        //   // r[0] *= l
-        //   // r[1] *= l
-        //   // vec.copy(r,vr)
-        //   vec.free(r)
-        //   vec.free(n)
-        //   vec.free(i)
-        // } else {
-        //   poly.translate(hex, vh[0], vh[1])
-        //   poly.translate(rect,vr[0], vr[1])
-        // }
-        // vec.free(v)
-        // vec.free(c.minTranslationVector)
-        // console.timeEnd('collision')
 
         // draw
         // console.time('draw')
         draw.clear()
+
+        for (var i = 0; i < intersections.length; i++) {
+          draw.line(intersections[i]).stroke('green')
+        };
+
         draw.line(S1).stroke('blue');
         draw.poly(rect).stroke('red');
+        draw.poly(puck2).stroke('red');
         draw.poly(hex).stroke('orange');
+        draw.poly(paddle).stroke('pink');
         draw.poly(bounds).stroke('black');
         // console.timeEnd('draw')
+
 
         // intersectsPoly(hex,S1)
         // intersectsPoly(rect,S1)
@@ -659,9 +644,15 @@
         // console.timeEnd('run')
       }
       run()
-
+      var mx=0, my=75;
       document.addEventListener('click',restart)
       document.addEventListener('keydown',stop)
+      document.addEventListener('mousemove',function(e){
+        if( e.pageX < 550 && e.pageX > 10 )
+          mx = e.pageX/550*80;
+        // if( e.pageY < 550 && e.pageY > 10 )
+        //   my = e.pageY/550*80;
+      })
 
 // TODO segment w radius
 
