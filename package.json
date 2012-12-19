@@ -16,7 +16,6 @@
   "author": "Robert Sköld <robert@publicclass>",
   "license": "MIT",
   "devDependencies": {
-    "should": "~1.2.1",
     "mocha": "~1.7.1"
   },
   "dependencies": {
